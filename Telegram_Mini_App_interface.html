@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Proxy Streamer</title>
+    <!-- Подключение Tailwind CSS для стилей -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Подключение Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* Стиль для шрифта Inter и адаптивный дизайн */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f8f9;
+            color: #1f2937;
+        }
+        .container {
+            max-width: 400px;
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body class="flex justify-center min-h-screen">
+    <div class="container w-full mx-auto p-4 flex flex-col items-center">
+        
+        <!-- Заголовок и описание -->
+        <h1 class="text-3xl font-extrabold text-[#0088CC] mb-2">
+            📺 Прокси-Стрим
+        </h1>
+        <p class="text-gray-600 text-center mb-6">
+            Введите URL видео или поисковый запрос. Бот обойдет блокировку.
+        </p>
+
+        <!-- Поле ввода -->
+        <input id="video-input" type="text" placeholder="Ссылка на YouTube или поисковый запрос..."
+               class="w-full p-3 mb-4 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 transition duration-150"
+               oninput="updateButtonText(this.value)">
+
+        <!-- Кнопки действий -->
+        <div class="flex flex-col space-y-3 w-full">
+            <button id="send-button" onclick="sendData('url')"
+                    class="w-full bg-[#0088CC] text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-[#0077B3] transition duration-150 disabled:opacity-50"
+                    disabled>
+                🔗 Проксировать Ссылку
+            </button>
+            <button id="search-button" onclick="sendData('search')"
+                    class="w-full bg-[#40C3F2] text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:bg-[#3498DB] transition duration-150 disabled:opacity-50"
+                    disabled>
+                🔎 Найти Видео
+            </button>
+        </div>
+
+        <p id="error-message" class="text-red-500 mt-4 hidden text-sm"></p>
+    </div>
+
+    <script>
+        const inputField = document.getElementById('video-input');
+        const sendButton = document.getElementById('send-button');
+        const searchButton = document.getElementById('search-button');
+        const errorMessage = document.getElementById('error-message');
+        
+        // Инициализация WebApp
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        
+        // Устанавливаем цвет фона Mini App
+        tg.MainButton.setParams({
+            text: 'Ожидание ввода...',
+            is_active: false,
+            is_visible: false
+        });
+
+        // ------------------------------------------------
+        // 1. Обработка входящих параметров (для поиска)
+        // ------------------------------------------------
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        const initialUrl = getQueryParam('url');
+        if (initialUrl) {
+            inputField.value = initialUrl;
+            // Сразу пытаемся проксировать, если пришел URL из поиска
+            updateButtonText(initialUrl);
+            sendData('url');
+        }
+
+        // ------------------------------------------------
+        // 2. Обновление состояния кнопок
+        // ------------------------------------------------
+        function isValidUrl(string) {
+            try {
+                const url = new URL(string);
+                return url.protocol === 'http:' || url.protocol === 'https:';
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function updateButtonText(value) {
+            const query = value.trim();
+            const isUrl = isValidUrl(query);
+
+            if (query.length > 0) {
+                sendButton.disabled = false;
+                searchButton.disabled = false;
+                
+                if (isUrl) {
+                    sendButton.textContent = '🔗 Проксировать Ссылку (Stream)';
+                    searchButton.textContent = '🔎 Найти по Тексту (Ignore URL)';
+                } else {
+                    sendButton.textContent = '🔗 Проксировать Ссылку (Must be URL)';
+                    searchButton.textContent = '🔎 Найти Видео';
+                    sendButton.disabled = true; // Отключаем ссылку, если это не URL
+                }
+            } else {
+                sendButton.disabled = true;
+                searchButton.disabled = true;
+                sendButton.textContent = '🔗 Проксировать Ссылку';
+                searchButton.textContent = '🔎 Найти Видео';
+            }
+            errorMessage.classList.add('hidden');
+        }
+
+        // ------------------------------------------------
+        // 3. Отправка данных боту
+        // ------------------------------------------------
+        function sendData(type) {
+            const query = inputField.value.trim();
+            
+            if (!query) {
+                errorMessage.textContent = 'Поле не может быть пустым.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            if (type === 'url' && !isValidUrl(query)) {
+                errorMessage.textContent = 'Для проксирования необходимо ввести корректный URL.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // Создаем объект с данными для передачи боту
+            const dataToSend = {
+                type: type, // 'url' или 'search'
+                query: query
+            };
+
+            // Отправка данных боту через WebApp SDK
+            try {
+                tg.sendData(JSON.stringify(dataToSend));
+                tg.close(); // Закрываем Mini App после отправки данных
+            } catch (e) {
+                errorMessage.textContent = 'Ошибка отправки данных. Убедитесь, что Mini App запущено через бота.';
+                errorMessage.classList.remove('hidden');
+                console.error("Error sending data:", e);
+            }
+        }
+
+        // Привязываем функцию к вводу
+        inputField.addEventListener('input', (e) => updateButtonText(e.target.value));
+
+    </script>
+</body>
+</html>
+
